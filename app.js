@@ -100,7 +100,7 @@
     line_modal_close_btn:{en:'Got it', ja:'閉じる', ko:'확인'}
   };
 
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbyttgZjMRFh6KEANIy-cd2MIt8H98mCLbb5LVSzYXqMiv-mcSRXKN0JAO-6ZErnr_pt/exec';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwSiXOtHJEtzvmmgqTRoNXPLfwNFa_MZ1mnFjZzRf0XwphOG86BSwTj3QcaHhB__VR0Og/exec';
 
   let currentLang = 'zh';
 
@@ -1056,7 +1056,14 @@
     if(igLoading) return igLoading;
     igLoading = postToBackend({ type:'igList' }).then(function(r){
       const body = r.body || {};
-      if(body.result === 'success'){ igDirectory = body.igs || []; igLoaded = true; }
+      if(body.result === 'success'){
+        // 後端送 people: [{ig, country}]，不含姓名（刻意的，見 gas.gs 的 handleIgList）。
+        // 萬一後端還是舊版只回 igs，補成同樣形狀，就只是少了國旗而已。
+        igDirectory = Array.isArray(body.people)
+          ? body.people
+          : (body.igs || []).map(function(ig){ return { ig:ig, country:'' }; });
+        igLoaded = true;
+      }
       igLoading = null;
     }).catch(function(){ igLoading = null; });
     return igLoading;
@@ -1064,9 +1071,12 @@
 
   function filterIgs(input){
     const k = igKey(input);
+    // 沒打字就先列出前 80 筆，方便直接翻找。
+    // 清單裡只有 IG 與國碼、沒有姓名，攤開來也指認不到特定個人。
     if(!k) return igDirectory.slice(0, 80);
-    return igDirectory.filter(function(ig){
-      const t = igKey(ig);
+
+    return igDirectory.filter(function(p){
+      const t = igKey(p.ig);
       return t.indexOf(k) >= 0 || k.indexOf(t) >= 0;
     }).slice(0, 80);
   }
@@ -1108,16 +1118,23 @@
         return;
       }
 
-      box.innerHTML = current.map(function(ig, i){
+      // 顯示「國旗 + IG 帳號」。不顯示姓名 —— 而且後端也不會送姓名過來，
+      // 所以就算有人去翻開發者工具也看不到別人的姓名。
+      box.innerHTML = current.map(function(p, i){
         return '<div class="ig-opt' + (i === activeIdx ? ' active' : '') + '"'
           + ' role="option" aria-selected="' + (i === activeIdx) + '"'
-          + ' data-ig="' + escapeHtml(ig) + '">' + escapeHtml(ig) + '</div>';
+          + ' data-idx="' + i + '">'
+          + (p.country ? '<span class="ig-opt-flag">' + flagOf(p.country) + '</span>' : '')
+          + '<span class="ig-opt-ig">' + escapeHtml(p.ig) + '</span>'
+          + '</div>';
       }).join('');
       openBox();
     }
 
-    function choose(ig){
-      input.value = ig;
+    function choose(p){
+      if(!p) return;
+      // 只填 IG 這一欄，不去動旁邊的姓名與國籍
+      input.value = p.ig;
       close();
     }
 
@@ -1141,7 +1158,7 @@
       const opt = e.target.closest('.ig-opt');
       if(!opt) return;
       e.preventDefault();
-      choose(opt.dataset.ig);
+      choose(current[Number(opt.dataset.idx)]);
     });
 
     document.addEventListener('click', function(e){
@@ -1839,7 +1856,6 @@
           + (req ? '<span class="adm-req">⚠ ' + req + '</span>' : '')
           + '<span class="adm-head-amount">NT$' + Number(g.due||0).toLocaleString() + '</span>'
           + '<span class="st-badge ' + meta.cls + '">' + psText(g) + '</span>'
-          + '<span class="adm-caret">▶</span>'
         + '</div>';
 
     return '<div class="adm-card' + (g.allCancelled?' is-void':'') + (req?' has-req':'') + '" data-id="' + escapeHtml(g.regId) + '">'
@@ -1858,11 +1874,12 @@
         // 款項狀態四個按鈕，緊接在匯款回報下面
         + '<div class="adm-actions adm-pay-row">' + statusBtns + '</div>'
         + '<div class="adm-sec"><h5>' + L('成員','Members') + '</h5>' + memHtml + '</div>'
+        // IG 拿掉了：上面「成員」區塊每一位（含本人）本來就會顯示自己的 IG，
+        // 這裡再列一次是重複的。「最後修改」也拿掉，需要追查改了什麼
+        // 請看「異動紀錄」分頁，那裡有完整的前後對照。
         + '<div class="adm-sec"><h5>' + L('其他資料','Details') + '</h5><dl class="kv">'
-          + '<dt>IG</dt><dd>' + escapeHtml(g.ig || '—') + '</dd>'
           + '<dt>' + L('併桌對象','Join table') + '</dt><dd>' + escapeHtml(g.tableWith || '—') + '</dd>'
           + '<dt>' + L('備註','Notes') + '</dt><dd>' + escapeHtml(g.notes || '—') + '</dd>'
-          + '<dt>' + L('最後修改','Last edited') + '</dt><dd>' + escapeHtml(g.lastEdited || '—') + '</dd>'
         + '</dl></div>'
         + '<div class="adm-actions"><button class="mini-btn" data-act="open-edit">✏️ ' + L('編輯資料','Edit') + '</button></div>'
         + editHtml
