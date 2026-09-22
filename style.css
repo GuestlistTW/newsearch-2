@@ -688,7 +688,7 @@
     padding:9px 12px; border-radius:10px; background:var(--bg-surface-2);
     border:1px dashed var(--line); margin-bottom:6px; font-size:0.85rem;
   }
-  .existing-mem.is-cancelled{opacity:0.45;}
+  .existing-mem.is-cancelled{opacity:0.8;}
 
   .adm-toolbar{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
   /* 讀取對帳數字：平常低調，數字對不上（有列被略過）時轉成橘色 */
@@ -719,7 +719,9 @@
     overflow:hidden; transition:border-color .2s;
   }
   .adm-card.is-open{border-color:var(--purple);}
-  .adm-card.is-void{opacity:0.5;}
+  /* 已取消的整組：淡一點以示區別，但不能淡到看不清楚姓名。
+     原本 0.5 在深色底上幾乎讀不出字，這是「取消的資料看不到人名」的直接原因。 */
+  .adm-card.is-void{opacity:0.82;}
   .adm-card.has-req{border-color:rgba(255,159,64,0.6);}
   .adm-head{
     display:flex; align-items:center; gap:10px; padding:6px 14px; cursor:pointer;
@@ -763,7 +765,9 @@
     padding:9px 12px; border-radius:10px; background:var(--bg-surface);
     border:1px solid var(--line); margin-bottom:6px;
   }
-  .mem-row.is-cancelled{opacity:0.5;}
+  /* 同上：整列淡化改為只淡化「非姓名」的部分，姓名維持正常亮度 */
+  .mem-row.is-cancelled{opacity:0.82;}
+  .mem-row.is-cancelled .mem-name{opacity:1; text-decoration:line-through; text-decoration-color:var(--text-muted);}
   .mem-row.is-pending{border-color:var(--orange);}
   .mem-left{
     flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:8px;
@@ -776,6 +780,9 @@
   }
   .mem-name{font-weight:600; font-size:0.88rem;}
   .mem-ig{font-size:0.76rem; color:var(--text-muted);}
+  /* 可點的 IG：平常低調，滑過才亮起來，不要在名單裡喧賓奪主 */
+  a.ig-link{color:var(--blue); text-decoration:none; border-bottom:1px dotted currentColor; cursor:pointer;}
+  a.ig-link:hover{color:var(--purple); border-bottom-style:solid;}
   .mem-left .mem-role{flex:0 0 auto;}
   .mem-left .mem-name,
   .mem-left .mem-ig{
@@ -833,7 +840,7 @@
     padding:10px 12px; border-radius:10px;
     background:var(--bg-surface-2); border:1px solid var(--line); margin-bottom:7px;
   }
-  .lr-mem.is-cancelled{opacity:0.5;}
+  .lr-mem.is-cancelled{opacity:0.82;}
   .lr-mem.is-pending{border-color:var(--orange);}
   .lr-mem .mem-name{flex:1 1 auto;}
   .lr-editbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;}
