@@ -388,11 +388,25 @@
   document.getElementById('line-modal-ok').addEventListener('click', closeLineModal);
 
   // ---- Backend Communication ----
-  // 現在只走一個 POST（對照那個很快的網站），所以只需要一個寬鬆逾時當安全網：
-  // 正常 1~2 秒就回，萬一冷啟動慢也給到 20 秒，超過才收尾顯示錯誤。
-  // 只剩單純一個 POST，所以只需要一個寬鬆逾時當安全網。
-  // 後端拿掉全域鎖之後，正常 1～2 秒就回；20 秒是留給冷啟動的餘裕。
+  //
+  // ── 關於逾時：舊站根本沒有設 ──
+  //
+  // 舊站的寫法是 fetch(...).then(r => r.json())，沒有任何逾時。
+  // 所以 GAS 冷啟動花 25 秒時，舊站就等 25 秒，然後正常顯示資料 ——
+  // 使用者覺得「這次有點慢」，但它成功了。
+  //
+  // 新版一開始每個請求都包 20 秒逾時，時間一到就放棄並顯示錯誤，
+  // 即使回應下一秒就要到了。同一件事，舊站叫「慢」，新站叫「錯誤」。
+  // 「另一個表從來沒遇過冷啟動問題」的真正原因就在這裡：
+  // 不是它不會冷啟動，是它從來不會放棄。
+  //
+  // 現在分成兩種：
+  //   寫入類 —— 20 秒。送出報名／匯款回報這種，等太久不如讓使用者知道，
+  //             而且有 _rid 冪等鍵保護，重送不會寫成兩筆。
+  //   讀取類 —— 90 秒，而且逾時會自動再試一次。讀取沒有副作用，
+  //             重試完全安全；寧可讓人多等，也不要把快到的資料丟掉。
   const POST_TIMEOUT = 20000;
+  const READ_TIMEOUT = 90000;
 
   function withTimeout(promise, ms){
     return new Promise((resolve, reject)=>{
@@ -402,8 +416,16 @@
     });
   }
 
-  async function postToBackend(payload){
+  /**
+   * opts.timeoutMs —— 這一次要等多久（預設 POST_TIMEOUT）
+   * opts.retries   —— 逾時後自動再試幾次（只有讀取類該用，寫入類一律 0）
+   */
+  async function postToBackend(payload, opts){
     if(!GAS_URL) return { ok:false, reason:'no-url' };
+
+    opts = opts || {};
+    const timeoutMs = opts.timeoutMs || POST_TIMEOUT;
+    const retries = opts.retries || 0;
 
     // 冪等鍵：萬一同一筆因逾時被送了兩次，後端用同一個 _rid 只認第一次、不重覆寫入。
     if(payload && typeof payload === 'object' && !payload._rid){
@@ -415,18 +437,54 @@
     // 對照組證明：在這個環境，單純 POST 到 GAS 就能又快又穩地拿到回應，不需要備援。
     // 只保留一個寬鬆逾時（20 秒）當安全網 —— 萬一真的卡住才收尾顯示錯誤，
     // 正常情況 1~2 秒就回來，完全不受影響。
+    // ── 先當純文字收下來，再自己 JSON.parse ──
+    //
+    // 原本是直接 await res.json()。問題是：當後端回的不是資料而是一頁 HTML
+    //（Google 的錯誤頁、登入頁、或 Apps Script 執行失敗的畫面），
+    // res.json() 會拋出 SyntaxError，被下面的 catch 接住之後標成 'network'，
+    // 於是畫面顯示「可能是網路問題，或你正用 LINE 內建瀏覽器」——
+    // 完全不是真正的原因，而真正的原因（那頁 HTML 說了什麼）被整個丟掉。
+    //
+    // 改成文字優先之後，parse 失敗時我們手上還留著原始內容，
+    // 可以據此分辨到底是哪一種狀況，並且把前 300 字帶回去顯示。
+    let res, raw;
     try{
-      const res = await withTimeout(fetch(GAS_URL, {
+      res = await withTimeout(fetch(GAS_URL, {
         method:'POST',
         body: JSON.stringify(payload)
-      }), POST_TIMEOUT);
-      const body = await res.json();
-      return { ok:true, via:'post', status:res.status, body:body };
+      }), timeoutMs);
+      raw = await res.text();
     }catch(err){
       const msg = String(err && err.message ? err.message : err);
       const reason = /timeout|abort/i.test(msg) ? 'timeout' : 'network';
-      console.warn('POST 失敗：', err);
+      console.warn('POST 連線失敗：', err);
+
+      // 讀取類請求逾時就自動再試。第一趟多半是在等冷啟動，
+      // 那趟把執行個體叫醒之後，第二趟通常一兩秒就回來了。
+      // 帶著同一個 _rid 重送，就算是寫入類也不會被寫成兩筆。
+      if(retries > 0){
+        console.warn('逾時，自動重試（剩餘 ' + retries + ' 次）');
+        return postToBackend(payload, { timeoutMs: timeoutMs, retries: retries - 1 });
+      }
       return { ok:false, reason:reason, error:msg };
+    }
+
+    try{
+      return { ok:true, via:'post', status:res.status, body: JSON.parse(raw) };
+    }catch(err){
+      // 連線是通的（拿得到回應），只是內容不是 JSON。
+      const snippet = String(raw || '')
+        .replace(/<[^>]*>/g, ' ')       // 去標籤，留下人看得懂的文字
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
+      console.error('後端回的不是 JSON。HTTP ' + res.status + '：', raw);
+      return {
+        ok:false, reason:'bad-response',
+        status: res.status,
+        snippet: snippet,
+        error:'non-json-response'
+      };
     }
   }
 
@@ -1228,7 +1286,7 @@
       setTimeout(()=> msg.classList.remove('show'), 8000);
     };
 
-    const r = await postToBackend({ type:'lookup', phone: phone });
+    const r = await postToBackend({ type:'lookup', phone: phone }, { timeoutMs: READ_TIMEOUT, retries: 1 });
     const data = r.body || {};
 
     if(!r.ok){
@@ -1455,7 +1513,7 @@
     // 但那趟要讀整張報名表、每組重新組裝，冷啟動時很容易超過 20 秒逾時 ——
     // 結果就是連後台的門都進不去。現在名單改成進去之後才載（見下方），
     // 名單慢是名單的事，不會再把人擋在登入頁外面。
-    const r = await postToBackend({ type:'adminBootstrap', password: pw });
+    const r = await postToBackend({ type:'adminBootstrap', password: pw }, { timeoutMs: READ_TIMEOUT, retries: 1 });
     const body = r.body || {};
 
     btn.disabled = false;
@@ -1522,7 +1580,9 @@
       applyAdminData(body.results);
     } else {
       document.getElementById('admin-list').innerHTML =
-        '<div class="adm-empty">' + (isEn() ? 'Loading list…' : '名單載入中…') + '</div>';
+        '<div class="adm-empty">' + (isEn()
+          ? 'Loading list… (the first load after a while can take 10–30 seconds)'
+          : '名單載入中…（隔一段時間沒人用的話，第一次載入可能要 10～30 秒，請稍候）') + '</div>';
       loadAdminList();
     }
   }
@@ -1534,20 +1594,33 @@
   async function loadAdminList(){
     const btn = document.getElementById('admin-refresh-btn');
     btn.disabled = true;
-    const r = await postToBackend({ type:'adminList', password: adminPassword });
+    const r = await postToBackend({ type:'adminList', password: adminPassword }, { timeoutMs: READ_TIMEOUT, retries: 1 });
     const body = r.body || {};
     showWarnings(body);
     if(body.result === 'success'){
       applyAdminData(body.results || []);
+      showReadStats(body.stats, body.serverMs);
     } else if(!r.ok){
       const reasonTxt = (r.reason === 'timeout')
+        // 走到這裡代表「等了 90 秒、而且自動重試過一次」都還沒回來。
+        // 那就不是冷啟動了（冷啟動撐死幾十秒），是後端真的卡住或掛掉。
+        // 先前這裡寫「請再按一次，通常第二次就好」是錯的建議 ——
+        // 重試已經自動做過了，叫使用者再按只是重複一次相同的等待。
         ? (isEn()
-            ? 'The server took too long to respond (large data or a cold start right after redeploying). Press "Refresh Data" again — the second try is usually much faster.'
-            : '伺服器回應逾時：可能是資料較多，或剛重新部署造成「冷啟動」。請再按一次「更新資料」，通常第二次就會快很多。這不是網址或權限問題（登入已經成功，代表連線正常）。')
+            ? 'No response after 90 seconds, including one automatic retry. This is no longer a cold start — something is genuinely stuck on the backend. Press 🔧 Diagnose to see where.'
+            : '等了 90 秒（而且已經自動重試過一次）仍然沒有回應。這已經不是冷啟動了 —— 後端是真的卡住或出錯。請按「🔧 診斷」看是哪一段有問題。')
         : (r.reason === 'bad-response')
+          // 把後端「真正回了什麼」原封不動顯示出來。
+          // 這是整段診斷最關鍵的一行：Google 的錯誤頁通常會明講原因
+          //（沒有權限、指令碼發生錯誤、要求登入…），有這段文字就不必再猜。
           ? (isEn()
-              ? 'The server replied with a web page instead of data. The Apps Script is reachable but not returning JSON — check that it is deployed as a NEW VERSION with access set to "Anyone". (Details in the console, F12)'
-              : '後端回傳的是網頁而不是資料。連線是通的，但 Apps Script 沒有正常回應 —— 請確認已「部署新版本」且存取權限為「任何人」。詳細內容在主控台（F12）。')
+              ? ('The server replied with a web page instead of data (HTTP ' + r.status + ').\n'
+                 + 'What it actually said: 「' + (r.snippet || '(empty)') + '」\n'
+                 + 'Usually: not deployed as a NEW VERSION, or access is not set to "Anyone".')
+              : ('後端回傳的是網頁而不是資料（HTTP ' + r.status + '）。\n'
+                 + '它實際回的內容是：「' + (r.snippet || '(空白)') + '」\n'
+                 + '最常見的兩個原因：一是沒有「部署新版本」（只存檔不算），'
+                 + '二是存取權限不是「任何人」。請把上面這段內容一起回報。'))
           : (isEn()
               ? 'The request did not complete (network, or an in-app browser such as LINE/Instagram blocking it). Try opening the page in a normal browser.'
               : '請求沒有完成：可能是網路問題，或你正用 LINE／Instagram 內建瀏覽器（會擋掉部分連線）。請改用系統瀏覽器（Safari／Chrome）再試一次。');
@@ -1567,7 +1640,7 @@
     btn.disabled = true;
     document.getElementById('admin-log-list').innerHTML =
       '<div class="adm-empty">' + (isEn() ? 'Loading…' : '載入中…') + '</div>';
-    const r = await postToBackend({ type:'adminLog', password: adminPassword, limit: 300 });
+    const r = await postToBackend({ type:'adminLog', password: adminPassword, limit: 300 }, { timeoutMs: READ_TIMEOUT, retries: 1 });
     const body = r.body || {};
     adminLogs = (body.result === 'success') ? (body.logs || []) : [];
     renderAdminLog();
@@ -1579,6 +1652,37 @@
     showToast(isEn() ? '✅ Updated' : '✅ 資料已更新');
   });
   document.getElementById('admin-log-refresh-btn').addEventListener('click', loadAdminLog);
+
+  // ---- 診斷 ----
+  // 讀名單失敗時，錯誤訊息只說得出症狀（逾時／回的不是資料）。
+  // 這顆按鈕會去問後端「你那邊看到的環境長什麼樣」：試算表打不打得開、
+  // 分頁叫什麼、標題缺不缺、各有幾列、組名單會不會炸。
+  // 結果直接印在畫面上，可以整段複製回報，不必再去記錯誤訊息。
+  document.getElementById('admin-diagnose-btn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('admin-diagnose-btn');
+    const box = document.getElementById('admin-diag');
+    btn.disabled = true;
+    box.style.display = 'block';
+    box.textContent = isEn() ? 'Running diagnostics…' : '診斷中…';
+
+    const r = await postToBackend({ type:'diagnose', password: adminPassword }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+
+    if(!r.ok){
+      // 連診斷都打不通 → 問題在傳輸層，不在試算表。這個結論本身就很有用。
+      box.textContent =
+        (isEn() ? 'Could not reach the backend at all.\n' : '連診斷請求都打不到後端。\n')
+        + 'reason: ' + r.reason + '\n'
+        + (r.status ? 'HTTP: ' + r.status + '\n' : '')
+        + (r.snippet ? (isEn() ? 'Server said: ' : '後端實際回的內容：') + r.snippet + '\n' : '')
+        + (r.error ? 'error: ' + r.error + '\n' : '')
+        + (isEn()
+            ? '\n→ This is a transport/deployment problem, not a spreadsheet problem.'
+            : '\n→ 這代表問題在部署或連線，不在試算表。請檢查：是否已「部署新版本」、存取權限是否為「任何人」。');
+    } else {
+      box.textContent = JSON.stringify(r.body, null, 2);
+    }
+    btn.disabled = false;
+  });
 
   document.querySelectorAll('.adm-viewtab').forEach(b=>{
     b.addEventListener('click', ()=>{
@@ -1601,6 +1705,27 @@
   });
 
   document.getElementById('admin-country-filter').addEventListener('change', renderAdminList);
+
+  // 顯示「試算表幾列 → 認到幾組幾人」的對帳數字。
+  // 有這一行，資料被吃掉的時候看得出來 —— 沒有的話，畫面只會少幾個人，
+  // 而你完全不會知道少了。數字對不上時會轉成橘色示警。
+  function showReadStats(stats, serverMs){
+    const el = document.getElementById('admin-read-stats');
+    if(!el) return;
+    if(!stats){ el.textContent = ''; el.classList.remove('is-warn'); return; }
+
+    const skipped = Number(stats.skippedNoRegId) || 0;
+    // 後端耗時也印出來。哪天又變慢，看這個數字就知道該往後端還是傳輸去查。
+    const ms = (serverMs == null) ? '' : ('　後端 ' + (serverMs / 1000).toFixed(1) + ' 秒');
+    el.textContent = isEn()
+      ? ('Sheet rows: ' + stats.sheetRows + ' → ' + stats.groups + ' groups / ' + stats.people + ' people'
+         + (skipped ? '  ⚠ ' + skipped + ' rows skipped (no registration ID)' : '')
+         + (ms ? '  server ' + (serverMs / 1000).toFixed(1) + 's' : ''))
+      : ('試算表 ' + stats.sheetRows + ' 列 → 認到 ' + stats.groups + ' 組 / ' + stats.people + ' 人'
+         + (skipped ? '　⚠ 有 ' + skipped + ' 列沒有報名編號，未顯示' : '')
+         + ms);
+    el.classList.toggle('is-warn', skipped > 0);
+  }
 
   function showWarnings(body){
     const box = document.getElementById('warn-banner');

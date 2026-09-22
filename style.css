@@ -691,6 +691,20 @@
   .existing-mem.is-cancelled{opacity:0.45;}
 
   .adm-toolbar{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
+  /* 讀取對帳數字：平常低調，數字對不上（有列被略過）時轉成橘色 */
+  .read-stats{font-variant-numeric:tabular-nums;}
+  .read-stats.is-warn{color:var(--orange); font-weight:600;}
+
+  /* 診斷輸出：等寬字、可捲動、可整段選取複製 */
+  .diag-box{
+    background:var(--bg-deep); border:1px solid var(--purple); border-radius:12px;
+    padding:14px 16px; margin:0 0 14px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:0.74rem; line-height:1.55; color:var(--text-light);
+    max-height:420px; overflow:auto;
+    white-space:pre-wrap; word-break:break-word;
+    user-select:text; -webkit-user-select:text;
+  }
   .adm-viewtabs{display:flex; gap:6px; margin-bottom:16px;}
   .adm-viewtab{
     padding:9px 18px; border-radius:10px; border:1px solid var(--line);
