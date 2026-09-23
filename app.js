@@ -100,9 +100,145 @@
     line_modal_close_btn:{en:'Got it', ja:'閉じる', ko:'확인'}
   };
 
+  // ===================== 主頁公告 =====================
+  //
+  // 存成結構化資料而不是塞進 I18N 的字串，原因是這裡有條列、有標題，
+  // 而 applyLang() 走的是 el.textContent = ... ——
+  // textContent 不會解析 HTML，條列符號會變成一串純文字擠在一起。
+  // 所以改由 renderAnnouncements() 自己畫，並在切換語言時重新呼叫一次。
+  //
+  // 每則公告：title（標題）、intro（開場，選填）、bullets（條列，選填）、body（段落，選填）
+  // 缺某個語言時會自動退回英文，再退回中文（見 pickText），不會開天窗。
+  const ANNOUNCEMENTS = [
+    {
+      id: 'pay',
+      icon: '💳',
+      title: {
+        zh:'匯款提醒',
+        en:'Payment Reminder',
+        ja:'お振込みのお願い',
+        ko:'송금 안내'
+      },
+      body: {
+        zh:'已完成匯款的朋友，請至「匯款轉帳」分頁填寫轉帳資訊，謝謝！',
+        en:'If you’ve completed your bank transfer, please submit your payment details on the Payment page. Thank you!',
+        ja:'お振込みが完了しましたら、「銀行振込」ページより振込情報をご入力ください。ありがとうございます。',
+        ko:'송금을 완료하신 분은 ‘송금 안내’ 페이지에서 송금 정보를 입력해 주세요. 감사합니다!'
+      }
+    },
+    {
+      id: 'seating',
+      icon: '🪑',
+      title: {
+        zh:'活動座位安排通知',
+        en:'Seating Arrangements Update',
+        ja:'お座席のご案内',
+        ko:'좌석 안내'
+      },
+      intro: {
+        zh:'大家好，跟大家說明一下活動的座位與桌次安排細節：',
+        en:'Hi everyone, here are the details regarding the seating arrangements for the event:',
+        ja:'皆さまへ、当日のお座席とテーブルについてご案内いたします。',
+        ko:'행사 당일 좌석 및 테이블 배치에 대해 안내드립니다.'
+      },
+      bullets: [
+        {
+          label:{ zh:'座位方式', en:'Seating Type', ja:'座席方式', ko:'좌석 방식' },
+          text:{
+            zh:'採預先排位制（非先到先選）。',
+            en:'Pre-arranged seating (not first-come, first-served).',
+            ja:'事前指定制です（当日先着順ではありません）。',
+            ko:'사전 배정제입니다 (선착순이 아닙니다).'
+          }
+        },
+        {
+          label:{ zh:'每桌人數', en:'Table Capacity', ja:'1テーブルの人数', ko:'테이블당 인원' },
+          text:{
+            zh:'一桌上限為 10 人。',
+            en:'Up to 10 pax max per table.',
+            ja:'最大 10 名までです。',
+            ko:'한 테이블 최대 10명입니다.'
+          }
+        },
+        {
+          label:{ zh:'同桌或附近安排', en:'Seating Preference', ja:'同席・近隣席のご希望', ko:'합석 및 인근 배치' },
+          text:{
+            zh:'填寫報名表時可註明希望同桌的朋友名單。若同行人數超過 10 人（例如 16 人），一樣可以在同一張表單上填寫，主辦方會協助安排坐在相鄰或附近的桌次；若無特別指定，將由主辦方統一協助排位。',
+            en:'You can specify who you would like to sit with on the entry form. If your group exceeds 10 people (e.g., 16 people), you can still list everyone on the same form, and the host will arrange for your tables to be next to or near each other. If no preferences are specified, seats will be assigned by the host.',
+            ja:'お申込みフォームにご一緒したい方のお名前をご記入いただけます。ご同行が 10 名を超える場合（例：16 名）も、同じフォームにまとめてご記入ください。主催側で隣接または近くのテーブルになるよう手配いたします。特にご指定がない場合は、主催側で調整させていただきます。',
+            ko:'신청서에 함께 앉고 싶은 분의 명단을 적어 주실 수 있습니다. 동행 인원이 10명을 넘는 경우(예: 16명)에도 같은 신청서에 모두 적어 주시면, 주최 측에서 인접하거나 가까운 테이블로 배치해 드립니다. 별도의 요청이 없으시면 주최 측에서 배정합니다.'
+          }
+        }
+      ]
+    }
+  ];
+
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbyttgZjMRFh6KEANIy-cd2MIt8H98mCLbb5LVSzYXqMiv-mcSRXKN0JAO-6ZErnr_pt/exec';
 
   let currentLang = 'zh';
+
+  // ===================== 自動判斷語言 =====================
+  //
+  // 使用者的手機／瀏覽器語言設定會透過 navigator.languages 傳給網頁，
+  // 直接拿來決定預設顯示哪一種語言 —— 日本朋友點開連結就是日文，
+  // 不必先找到右上角的地球圖示。
+  //
+  // 優先順序：
+  //   1. 使用者自己選過的語言（記在這台裝置上）—— 明確的選擇永遠優先
+  //   2. 裝置語言
+  //   3. 中文（本地活動，預設中文最合理）
+  const LANG_PREF_KEY = 'tp_lang_v1';
+
+  // 支援的語言。這裡刻意用字面陣列，而不是引用底下的 LANG_LABEL ——
+  // LANG_LABEL 宣告在這支函式的呼叫點「之後」，提前存取會拋 TDZ 錯誤，
+  // 而這段外面包著 try/catch（為了應付私密模式），錯誤會被安靜吃掉，
+  // 結果就是「記住的語言偏好永遠讀不到」而且完全看不出哪裡壞了。
+  const SUPPORTED_LANGS = ['zh', 'en', 'ja', 'ko'];
+
+  function detectLang(){
+    // 使用者選過就照他的意思，不要每次重新猜
+    try{
+      const saved = localStorage.getItem(LANG_PREF_KEY);
+      if(saved && SUPPORTED_LANGS.indexOf(saved) >= 0) return saved;
+    }catch(e){}   // 私密模式會拋錯，安靜略過往下猜
+
+    // navigator.languages 是照偏好排序的陣列（例如 ['ja','en-US','en']），
+    // 依序比對，第一個支援的就用它。舊瀏覽器只有 navigator.language，一併涵蓋。
+    let list = [];
+    try{
+      list = (navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : [navigator.language || navigator.userLanguage || ''];
+    }catch(e){ list = []; }
+
+    for(let i = 0; i < list.length; i++){
+      const tag = String(list[i] || '').toLowerCase();
+      if(!tag) continue;
+      // 只看主要語言代碼：zh-TW / zh-Hant / zh-HK 都算中文。
+      // 簡體（zh-CN）也給繁體 —— 內容看得懂，比丟英文給他好。
+      if(tag.indexOf('zh') === 0) return 'zh';
+      if(tag.indexOf('ja') === 0) return 'ja';
+      if(tag.indexOf('ko') === 0) return 'ko';
+      if(tag.indexOf('en') === 0) return 'en';
+    }
+
+    // 讀得到語言、但不是我們支援的四種（法文、德文、泰文…）→ 給英文。
+    // 對這些人來說英文一定比繁體中文好讀。
+    if(list.length && String(list[0] || '').trim()) return 'en';
+
+    // 完全讀不到語言資訊才回到中文（在地活動，預設中文最合理）
+    return 'zh';
+  }
+
+  function saveLangPref(lang){
+    try{ localStorage.setItem(LANG_PREF_KEY, lang); }catch(e){}
+  }
+
+  // 這裡只設定變數、不呼叫 applyLang ——
+  // applyLang 會用到國籍選擇器等等在檔案後面才建立的東西，太早呼叫會直接拋錯。
+  // 真正套用到畫面上是在檔案最後面（見「初始語言套用」）。
+  // 先設好 currentLang 的好處是：中途自動跳出的公告就已經是正確語言了。
+  currentLang = detectLang();
 
   function T(keyOrMap){
     const m = (typeof keyOrMap === 'string') ? I18N[keyOrMap] : keyOrMap;
@@ -159,6 +295,8 @@
     renumberGuests();
     updateGuestHint();
     refreshCountryPickers();
+    // 公告是自己畫的（不走 data-i18n），切語言時要跟著重畫
+    if(typeof renderAnnouncements === 'function') renderAnnouncements();
     if(typeof adminData !== 'undefined' && adminData.length){
       populateAdminCountryFilter();
       renderAdminStats();
@@ -183,9 +321,21 @@
     menu.addEventListener('click', function(e){
       const opt = e.target.closest('.lang-opt');
       if(!opt) return;
+      const changed = (opt.dataset.lang !== currentLang);
       applyLang(opt.dataset.lang);
+      // 記住這次的選擇。下次進站就直接用它，不再去猜裝置語言 ——
+      // 使用者明確選過的，永遠比自動判斷優先。
+      saveLangPref(opt.dataset.lang);
       menu.hidden = true;
       btn.setAttribute('aria-expanded', 'false');
+
+      // 切換語言之後把公告重新打開。
+      //
+      // 會切語言，代表這個人想用那個語言讀內容 —— 公告當然也包含在內。
+      // 原本關掉公告之後再切語言，公告就不會再出現，使用者會以為
+      // 「這個語言沒有公告」，其實只是沒有再打開而已。
+      // （語言沒變就不動，避免重複點同一個語言時視窗一直跳出來。）
+      if(changed && typeof openAnnounce === 'function') openAnnounce();
     });
 
     document.addEventListener('click', function(e){
@@ -388,6 +538,77 @@
     document.body.removeChild(ta);
   }
 
+  // ---- 主頁公告 ----
+  //
+  // 只畫「目前語言」那一版，不是四種語言疊在一起 ——
+  // 四種疊起來會讓公告長四倍，而網站本來就有語言切換器，
+  // 使用者選了哪個語言就該只看到哪個語言，跟站上其他文字一致。
+  function pickText(map){
+    if(!map) return '';
+    return map[currentLang] || map.en || map.zh || '';
+  }
+
+  function renderAnnouncements(){
+    const box = document.getElementById('announce-body');
+    if(!box) return;
+
+    box.innerHTML = ANNOUNCEMENTS.map(function(a){
+      let html = '<section class="announce-item">'
+        + '<h4 class="announce-title"><span class="announce-icon">' + a.icon + '</span>'
+        + escapeHtml(pickText(a.title)) + '</h4>';
+
+      if(a.intro) html += '<p class="announce-intro">' + escapeHtml(pickText(a.intro)) + '</p>';
+      if(a.body)  html += '<p class="announce-text">' + escapeHtml(pickText(a.body)) + '</p>';
+
+      if(a.bullets && a.bullets.length){
+        html += '<ul class="announce-list">' + a.bullets.map(function(b){
+          return '<li><b>' + escapeHtml(pickText(b.label)) + '</b>'
+               + '<span>' + escapeHtml(pickText(b.text)) + '</span></li>';
+        }).join('') + '</ul>';
+      }
+      return html + '</section>';
+    }).join('');
+
+    const closeBtn = document.getElementById('announce-close-btn');
+    if(closeBtn){
+      closeBtn.textContent = T({ zh:'我知道了', en:'Got it', ja:'閉じる', ko:'확인' });
+    }
+    const head = document.getElementById('announce-head');
+    if(head){
+      head.textContent = T({ zh:'公告', en:'Announcements', ja:'お知らせ', ko:'공지사항' });
+    }
+    const openBtn = document.getElementById('announce-open-btn');
+    if(openBtn){
+      openBtn.setAttribute('aria-label', T({ zh:'查看公告', en:'View announcements',
+                                             ja:'お知らせを見る', ko:'공지사항 보기' }));
+    }
+  }
+
+  const announceModal = document.getElementById('announce-modal');
+  function openAnnounce(){
+    if(!announceModal) return;
+    renderAnnouncements();
+    announceModal.style.display = 'flex';
+  }
+  function closeAnnounce(){
+    if(announceModal) announceModal.style.display = 'none';
+  }
+
+  if(announceModal){
+    document.getElementById('announce-close-btn').addEventListener('click', closeAnnounce);
+    document.getElementById('announce-x').addEventListener('click', closeAnnounce);
+    document.getElementById('announce-open-btn').addEventListener('click', openAnnounce);
+    // 點灰色背景也能關（點內容區不會關）
+    announceModal.addEventListener('click', function(e){
+      if(e.target === announceModal) closeAnnounce();
+    });
+    document.addEventListener('keydown', function(e){
+      if(e.key === 'Escape' && announceModal.style.display === 'flex') closeAnnounce();
+    });
+    // 每次進站都自動跳出
+    openAnnounce();
+  }
+
   // ---- 報名成功提示 ----
   const lineModal = document.getElementById('line-modal');
   function openLineModal(){
@@ -413,10 +634,20 @@
   // 現在分成兩種：
   //   寫入類 —— 20 秒。送出報名／匯款回報這種，等太久不如讓使用者知道，
   //             而且有 _rid 冪等鍵保護，重送不會寫成兩筆。
-  //   讀取類 —— 90 秒，而且逾時會自動再試一次。讀取沒有副作用，
-  //             重試完全安全；寧可讓人多等，也不要把快到的資料丟掉。
+  //   讀取類 —— 18 秒，逾時自動再試，每次逾時拉長 1.4 倍（18 → 25 → 35 秒）。
+  //
+  // ── 為什麼不是「一次等 90 秒」──
+  //
+  // 上一版把讀取類設成 90 秒 + 重試一次，結果是災難：
+  // 第一次請求卡住時要乾等滿 90 秒才放棄，第二次 1 秒就拿到資料，
+  // 使用者體感是「按下去兩分鐘完全沒反應」。逾時和重試的時間會相加，
+  // 設得越寬容、卡住時越久 —— 這是當初沒想到的組合效應。
+  //
+  // 實際觀察到的後端耗時是 1～2 秒。卡到 18 秒幾乎可以斷定這一趟已經掉了
+  //（多半是 GAS 轉址那層丟包），繼續等沒有意義，早點重送才是對的。
+  // 後面幾次逐步拉長，是留給真的冷啟動的餘裕。
   const POST_TIMEOUT = 20000;
-  const READ_TIMEOUT = 90000;
+  const READ_TIMEOUT = 18000;
 
   function withTimeout(promise, ms){
     return new Promise((resolve, reject)=>{
@@ -483,8 +714,16 @@
       // 帶著同一個 _rid 重送，就算是寫入類也不會被寫成兩筆。
       if(retries > 0){
         console.warn('逾時，自動重試（剩餘 ' + retries + ' 次）');
+        // 讓呼叫端可以把「第幾次嘗試」顯示出來。少了這個，
+        // 使用者看到的就是一片「載入中…」不動，無法分辨是還在跑還是當掉了。
+        if(typeof opts.onRetry === 'function'){
+          try{ opts.onRetry(); }catch(e){}
+        }
         return postToBackend(payload, {
-          timeoutMs: timeoutMs, retries: retries - 1, badRetries: badRetries });
+          timeoutMs: Math.round(timeoutMs * 1.4),   // 逐次放寬，留給真的冷啟動
+          retries: retries - 1,
+          badRetries: badRetries,
+          onRetry: opts.onRetry });
       }
       return { ok:false, reason:reason, error:msg };
     }
@@ -517,8 +756,12 @@
         const waitMs = 400 * (3 - badRetries);
         console.warn('收到非 JSON 回應（HTTP ' + res.status + '），' + waitMs + 'ms 後重送（剩餘 ' + badRetries + ' 次）');
         await sleep(waitMs);
+        if(typeof opts.onRetry === 'function'){
+          try{ opts.onRetry(); }catch(e){}
+        }
         return postToBackend(payload, {
-          timeoutMs: timeoutMs, retries: retries, badRetries: badRetries - 1 });
+          timeoutMs: timeoutMs, retries: retries, badRetries: badRetries - 1,
+          onRetry: opts.onRetry });
       }
 
       return {
@@ -528,6 +771,91 @@
         error:'non-json-response'
       };
     }
+  }
+
+  // ===================== 讀取：並行發送（hedged request）=====================
+  //
+  // ── 為什麼需要這個 ──
+  //
+  // 實測數據（後台診斷）：
+  //     後端 0.7 秒　前端總計 19.9 秒（嘗試 2 次）　傳輸／轉址 19.2 秒
+  //
+  // 也就是 18 秒（第一趟等滿逾時）+ 1.9 秒（第二趟順利完成）。
+  // 第一趟請求會卡死不回應，第二趟卻一兩秒就好 —— 而且會重複發生。
+  //
+  // 既然第一趟靠不住，就不該把時間全押在它身上。原本「等它逾時再重送」
+  // 等於每次都先白白丟掉 18 秒。
+  //
+  // ── 做法 ──
+  //
+  // 先發第一趟；HEDGE_MS 之後若還沒有回應，就「同時」再發一趟，
+  // 不取消前一趟，誰先回來就用誰的。這是標準的 hedged request：
+  // 用一點額外流量，換掉最慢那條路徑造成的等待。
+  //
+  // 只給讀取用。讀取沒有副作用，多發幾次完全安全；
+  // 而且同一次呼叫共用同一個 _rid，就算後端真的收到兩次也認得是同一筆。
+  const HEDGE_MS = 4000;        // 多久沒回應就補發下一趟
+  const HEDGE_MAX = 3;          // 最多同時幾趟在飛
+  const HEDGE_DEADLINE = 30000; // 全部加起來的上限
+
+  function hedgedRead(payload, opts){
+    opts = opts || {};
+    const hedgeMs = opts.hedgeMs || HEDGE_MS;
+    const maxTries = opts.maxTries || HEDGE_MAX;
+    const deadline = opts.deadlineMs || HEDGE_DEADLINE;
+
+    return new Promise(function(resolve){
+      let settled = false;
+      let launched = 0;
+      let finished = 0;
+      let lastFail = null;
+      const timers = [];
+
+      function done(result){
+        if(settled) return;
+        settled = true;
+        timers.forEach(clearTimeout);
+        result.attempts = launched;
+        resolve(result);
+      }
+
+      function launch(){
+        if(settled || launched >= maxTries) return;
+        launched++;
+        const myNo = launched;
+
+        // 每一趟自己的逾時就設成總期限，真正的「早點放棄」是靠補發下一趟，
+        // 而不是靠掐掉這一趟 —— 萬一它其實只是慢一點，晚到也還能用。
+        postToBackend(payload, { timeoutMs: deadline, retries: 0, badRetries: 1 })
+          .then(function(r){
+            finished++;
+            if(r.ok){
+              if(myNo > 1) console.warn('第 ' + myNo + ' 趟先回來，採用它的結果');
+              done(r);
+            } else {
+              lastFail = r;
+              // 全部都跑完而且都失敗了，才算真的失敗
+              if(finished >= maxTries) done(lastFail);
+              else if(typeof opts.onRetry === 'function'){ try{ opts.onRetry(launched); }catch(e){} }
+            }
+          });
+
+        if(launched < maxTries){
+          timers.push(setTimeout(function(){
+            if(settled) return;
+            console.warn(hedgeMs + 'ms 內沒有回應，並行補發第 ' + (launched + 1) + ' 趟');
+            if(typeof opts.onRetry === 'function'){ try{ opts.onRetry(launched + 1); }catch(e){} }
+            launch();
+          }, hedgeMs));
+        }
+      }
+
+      timers.push(setTimeout(function(){
+        done(lastFail || { ok:false, reason:'timeout', error:'hedge-deadline' });
+      }, deadline));
+
+      launch();
+    });
   }
 
   // ---- Form Submission ----
@@ -1435,7 +1763,7 @@
       setTimeout(()=> msg.classList.remove('show'), 8000);
     };
 
-    const r = await postToBackend({ type:'lookup', phone: phone }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+    const r = await hedgedRead({ type:'lookup', phone: phone });
     const data = r.body || {};
 
     if(!r.ok){
@@ -1662,7 +1990,7 @@
     // 但那趟要讀整張報名表、每組重新組裝，冷啟動時很容易超過 20 秒逾時 ——
     // 結果就是連後台的門都進不去。現在名單改成進去之後才載（見下方），
     // 名單慢是名單的事，不會再把人擋在登入頁外面。
-    const r = await postToBackend({ type:'adminBootstrap', password: pw }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+    const r = await hedgedRead({ type:'adminBootstrap', password: pw });
     const body = r.body || {};
 
     btn.disabled = false;
@@ -1743,12 +2071,39 @@
   async function loadAdminList(){
     const btn = document.getElementById('admin-refresh-btn');
     btn.disabled = true;
-    const r = await postToBackend({ type:'adminList', password: adminPassword }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+
+    // 載入過程中把狀態寫在名單區。重點是「第幾次嘗試」——
+    // 沒有這個資訊，一旦第一趟卡住，畫面就只是一片不動的「載入中」，
+    // 使用者無法分辨是還在跑還是已經當掉，只能一直等。
+    const listBox = document.getElementById('admin-list');
+    let tryNo = 1;
+    // 從按下去到資料到手的實際牆鐘時間。
+    // serverMs（GAS 執行）只是其中一段，剩下的是 Google 的轉址往返與傳輸 ——
+    // 兩個數字差多少，直接決定該往哪裡查：
+    //   差距小 → 就是 GAS 固定開銷，沒得再快
+    //   差距大 → 請求在半路掉過，時間花在逾時重送
+    const tStart = Date.now();
+    const showLoading = ()=>{
+      listBox.innerHTML = '<div class="adm-empty">'
+        + (isEn() ? 'Loading…' : '名單載入中…')
+        + (tryNo > 1
+            ? ('　' + (isEn() ? '(attempt ' + tryNo + ')' : '（第 ' + tryNo + ' 次嘗試）'))
+            : '')
+        + '</div>';
+    };
+    showLoading();
+
+    const r = await hedgedRead(
+      { type:'adminList', password: adminPassword },
+      { onRetry: (n)=>{ tryNo = n; showLoading(); } });
     const body = r.body || {};
     showWarnings(body);
     if(body.result === 'success'){
       applyAdminData(body.results || []);
-      showReadStats(body.stats, body.serverMs);
+      // 統計數字不再常駐在工具列上（版面太吵），改成存下來，
+      // 按「🔧 診斷」時才連同診斷結果一起顯示。
+      lastReadInfo = { stats: body.stats, serverMs: body.serverMs, at: new Date(),
+                       clientMs: Date.now() - tStart, attempts: r.attempts || tryNo };
     } else if(!r.ok){
       const reasonTxt = (r.reason === 'timeout')
         // 走到這裡代表「等了 90 秒、而且自動重試過一次」都還沒回來。
@@ -1798,7 +2153,7 @@
     btn.disabled = true;
     document.getElementById('admin-log-list').innerHTML =
       '<div class="adm-empty">' + (isEn() ? 'Loading…' : '載入中…') + '</div>';
-    const r = await postToBackend({ type:'adminLog', password: adminPassword, limit: 300 }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+    const r = await hedgedRead({ type:'adminLog', password: adminPassword, limit: 300 });
     const body = r.body || {};
     adminLogs = (body.result === 'success') ? (body.logs || []) : [];
     renderAdminLog();
@@ -1823,7 +2178,7 @@
     box.style.display = 'block';
     box.textContent = isEn() ? 'Running diagnostics…' : '診斷中…';
 
-    const r = await postToBackend({ type:'diagnose', password: adminPassword }, { timeoutMs: READ_TIMEOUT, retries: 1 });
+    const r = await hedgedRead({ type:'diagnose', password: adminPassword });
 
     if(!r.ok){
       // 連診斷都打不通 → 問題在傳輸層，不在試算表。這個結論本身就很有用。
@@ -1837,7 +2192,9 @@
             ? '\n→ This is a transport/deployment problem, not a spreadsheet problem.'
             : '\n→ 這代表問題在部署或連線，不在試算表。請檢查：是否已「部署新版本」、存取權限是否為「任何人」。');
     } else {
-      box.textContent = JSON.stringify(r.body, null, 2);
+      const head = readStatsText();
+      box.textContent = (head ? head + '\n\n' + '─'.repeat(40) + '\n\n' : '')
+        + JSON.stringify(r.body, null, 2);
     }
     btn.disabled = false;
   });
@@ -1862,27 +2219,75 @@
     });
   });
 
-  document.getElementById('admin-country-filter').addEventListener('change', renderAdminList);
+  // 國籍下拉與快速鍵是同一個篩選的兩個入口，任一邊改動都要讓另一邊跟上，
+  // 否則畫面會出現「下拉寫著 US、但 TW 按鈕還亮著」這種互相矛盾的狀態。
+  const countrySelect = document.getElementById('admin-country-filter');
+
+  function syncCountryQuick(){
+    const v = (countrySelect && countrySelect.value) || 'all';
+    document.querySelectorAll('#country-quick .cq-btn').forEach(function(b){
+      b.classList.toggle('active', b.dataset.cq === v);
+    });
+  }
+
+  countrySelect.addEventListener('change', function(){
+    syncCountryQuick();
+    renderAdminList();
+  });
+
+  document.querySelectorAll('#country-quick .cq-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      const want = b.dataset.cq;
+      // 名單裡沒有這個國籍時，下拉裡不會有這個選項，直接設值會無效。
+      // 這種情況就照樣切成「全部」，並讓按鈕狀態反映真實結果。
+      const has = Array.prototype.some.call(countrySelect.options, function(o){ return o.value === want; });
+      countrySelect.value = has ? want : 'all';
+      syncCountryQuick();
+      renderAdminList();
+    });
+  });
 
   // 顯示「試算表幾列 → 認到幾組幾人」的對帳數字。
   // 有這一行，資料被吃掉的時候看得出來 —— 沒有的話，畫面只會少幾個人，
   // 而你完全不會知道少了。數字對不上時會轉成橘色示警。
-  function showReadStats(stats, serverMs){
-    const el = document.getElementById('admin-read-stats');
-    if(!el) return;
-    if(!stats){ el.textContent = ''; el.classList.remove('is-warn'); return; }
+  // 最近一次讀取名單的統計（列數、組數、人數、後端耗時）。
+  // 先收著，按診斷時才拿出來用 —— 平常工具列保持乾淨。
+  let lastReadInfo = null;
 
-    const skipped = Number(stats.skippedNoRegId) || 0;
-    // 後端耗時也印出來。哪天又變慢，看這個數字就知道該往後端還是傳輸去查。
-    const ms = (serverMs == null) ? '' : ('　後端 ' + (serverMs / 1000).toFixed(1) + ' 秒');
-    el.textContent = isEn()
-      ? ('Sheet rows: ' + stats.sheetRows + ' → ' + stats.groups + ' groups / ' + stats.people + ' people'
-         + (skipped ? '  ⚠ ' + skipped + ' rows skipped (no registration ID)' : '')
-         + (ms ? '  server ' + (serverMs / 1000).toFixed(1) + 's' : ''))
-      : ('試算表 ' + stats.sheetRows + ' 列 → 認到 ' + stats.groups + ' 組 / ' + stats.people + ' 人'
-         + (skipped ? '　⚠ 有 ' + skipped + ' 列沒有報名編號，未顯示' : '')
-         + ms);
-    el.classList.toggle('is-warn', skipped > 0);
+  function readStatsText(){
+    if(!lastReadInfo || !lastReadInfo.stats) return '';
+    const st = lastReadInfo.stats;
+    const skipped = Number(st.skippedNoRegId) || 0;
+    const dup = Number(st.duplicateRegIds) || 0;
+    const t = lastReadInfo.at
+      ? lastReadInfo.at.toLocaleTimeString(isEn() ? 'en-US' : 'zh-TW',
+          { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+      : '';
+    return (isEn() ? 'Last loaded: ' : '最後讀取：') + t + '\n'
+      + (isEn()
+          ? ('Sheet rows ' + st.sheetRows + ' -> ' + st.groups + ' groups / ' + st.people + ' people')
+          : ('試算表 ' + st.sheetRows + ' 列 → 認到 ' + st.groups + ' 組 / ' + st.people + ' 人'))
+      + (lastReadInfo.serverMs != null
+          ? ((isEn() ? '   server ' : '　後端 ') + (lastReadInfo.serverMs / 1000).toFixed(1)
+             + (isEn() ? 's' : ' 秒'))
+          : '')
+      + (lastReadInfo.clientMs != null
+          ? ((isEn() ? '   total ' : '　前端總計 ') + (lastReadInfo.clientMs / 1000).toFixed(1)
+             + (isEn() ? 's' : ' 秒')
+             + '（' + (isEn() ? 'attempts ' : '嘗試 ') + lastReadInfo.attempts
+             + (isEn() ? '' : ' 次') + '）'
+             + ((lastReadInfo.serverMs != null)
+                 ? ('　' + (isEn() ? 'network ' : '傳輸／轉址 ')
+                    + ((lastReadInfo.clientMs - lastReadInfo.serverMs) / 1000).toFixed(1)
+                    + (isEn() ? 's' : ' 秒'))
+                 : ''))
+          : '')
+      + (skipped ? (isEn()
+            ? ('\n!! ' + skipped + ' rows skipped (no registration ID)')
+            : ('\n⚠ 有 ' + skipped + ' 列沒有報名編號，未顯示')) : '')
+      + (dup ? (isEn()
+            ? ('\n!! ' + dup + ' duplicate registration IDs')
+            : ('\n⚠ 有 ' + dup + ' 個重複的報名編號')) : '');
   }
 
   function showWarnings(body){
@@ -1904,8 +2309,8 @@
     renderAdminList();
     const t = new Date().toLocaleTimeString(isEn() ? 'en-US' : 'zh-TW',
       { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-    document.getElementById('admin-last-updated').textContent =
-      (isEn() ? 'Last updated: ' : '最後更新：') + t;
+    const upd = document.getElementById('admin-last-updated');
+    if(upd) upd.textContent = (isEn() ? 'Last updated: ' : '最後更新：') + t;
   }
 
   // 用目前的本機資料重畫統計與名單（不碰後端）
@@ -1915,8 +2320,8 @@
     renderAdminList();
     const t = new Date().toLocaleTimeString(isEn() ? 'en-US' : 'zh-TW',
       { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-    document.getElementById('admin-last-updated').textContent =
-      (isEn() ? 'Last updated: ' : '最後更新：') + t;
+    const upd = document.getElementById('admin-last-updated');
+    if(upd) upd.textContent = (isEn() ? 'Last updated: ' : '最後更新：') + t;
   }
 
   function renderAdminStats(){
@@ -1932,9 +2337,66 @@
     document.getElementById('stat-people').textContent = people;
     document.getElementById('stat-paid').textContent = done.length;
     document.getElementById('stat-outstanding').textContent = 'NT$' + outstanding.toLocaleString();
-    document.getElementById('stat-topup').textContent = topup.length;
-    document.getElementById('stat-pending').textContent = pending;
+    // 「待補款組數」與「待處理取消申請」兩個方塊已移除。
+    // 這兩件事在篩選列還看得到：「待補款」「⚠ 取消申請」兩顆按鈕，
+    // 以及卡片標題列上的 ⚠ 標記，所以不會因此漏掉待辦。
+    renderCountryStats(active);
   }
+
+  /**
+   * 各國人數統計。資料來自已經載入的 adminData，
+   * 不會多打任何一次後端請求 —— 純粹是把手上的資料再數一遍。
+   *
+   * 只算「仍出席」的人（已取消的不列入），因為這個數字的用途是
+   * 抓餐點與桌次的規模。台日韓固定排前面，其餘依人數由多到少。
+   */
+  function renderCountryStats(activeGroups){
+    const box = document.getElementById('country-stats');
+    if(!box) return;
+
+    const count = {};
+    activeGroups.forEach(function(g){
+      (g.members || []).forEach(function(m){
+        if(m.cancelled) return;
+        const c = String(m.country || '').trim().toUpperCase();
+        count[c || '??'] = (count[c || '??'] || 0) + 1;
+      });
+    });
+
+    const codes = Object.keys(count).sort(function(a, b){
+      const d = countryRank(a) - countryRank(b);
+      if(d !== 0) return d;
+      return count[b] - count[a];        // 同一層的，人多的排前面
+    });
+
+    if(codes.length === 0){ box.innerHTML = ''; return; }
+
+    // 預設只露一排，其餘收起來 —— 國家一多就會佔掉好幾行，
+    // 把真正要看的名單一路擠到畫面下方。點一下才展開全部。
+    const items = codes.map(function(c){
+      return '<span class="cs-item" title="' + escapeHtml(c) + '">'
+        + '<span class="cs-flag">' + (c === '??' ? '🏳️' : flagOf(c)) + '</span>'
+        + '<span class="cs-num">' + count[c] + '</span>'
+        + '</span>';
+    }).join('');
+
+    box.innerHTML = '<div class="cs-row' + (countryStatsOpen ? ' is-open' : '') + '">' + items + '</div>'
+      + '<button type="button" class="cs-toggle" id="cs-toggle">'
+      + (countryStatsOpen
+          ? (isEn() ? 'Show less ▲' : '收合 ▲')
+          : (isEn() ? 'All ' + codes.length + ' ▼' : '全部 ' + codes.length + ' 國 ▼'))
+      + '</button>';
+
+    const tg = document.getElementById('cs-toggle');
+    if(tg) tg.addEventListener('click', function(){
+      countryStatsOpen = !countryStatsOpen;
+      renderCountryStats(activeGroups);
+    });
+  }
+
+  // 國旗統計是否展開。放在外層是為了在重畫名單時維持狀態 ——
+  // 否則每按一次篩選或更新，展開的清單就會自己收回去。
+  let countryStatsOpen = false;
 
   function populateAdminCountryFilter(){
     const sel = document.getElementById('admin-country-filter');
@@ -1961,6 +2423,7 @@
     }).join('');
     sel.innerHTML = html;
     sel.value = (prev === 'all' || sorted.indexOf(prev) >= 0) ? prev : 'all';
+    if(typeof syncCountryQuick === 'function') syncCountryQuick();
   }
 
   function matchesCountry(g){
@@ -2369,3 +2832,13 @@
   }
   updateCountdown();
   setInterval(updateCountdown, 1000);
+
+  // ---- 初始語言套用 ----
+  //
+  // 放在整支檔案的最後執行。applyLang 會去碰國籍選擇器、攜伴列等等，
+  // 那些都在上面才建立好；提前呼叫會踩到「變數還沒初始化」而整頁掛掉。
+  //
+  // currentLang 在最前面就依裝置語言設定好了，所以這裡是把「已經決定好的語言」
+  // 真正套到畫面上：翻譯文字、語言按鈕、html lang 屬性、公告內容。
+  // 即使結果是中文也照樣呼叫一次，確保語言選單上的勾選狀態正確。
+  applyLang(currentLang);
