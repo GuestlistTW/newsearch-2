@@ -811,11 +811,17 @@
       let lastFail = null;
       const timers = [];
 
-      function done(result){
+      function done(result, winner, winnerMs){
         if(settled) return;
         settled = true;
         timers.forEach(clearTimeout);
         result.attempts = launched;
+        // 「發了幾趟」不足以判斷發生什麼事：
+        //   第 1 趟勝出 → 補發是白做的，真正問題是單趟就很慢
+        //   第 2 趟勝出 → 第一趟真的卡死了，補發確實救到
+        // 這兩種情況總時間可能一模一樣，但要修的地方完全不同。
+        result.winner = winner || 0;
+        result.winnerMs = winnerMs || 0;
         resolve(result);
       }
 
@@ -823,6 +829,7 @@
         if(settled || launched >= maxTries) return;
         launched++;
         const myNo = launched;
+        const myStart = Date.now();
 
         // 每一趟自己的逾時就設成總期限，真正的「早點放棄」是靠補發下一趟，
         // 而不是靠掐掉這一趟 —— 萬一它其實只是慢一點，晚到也還能用。
@@ -831,11 +838,11 @@
             finished++;
             if(r.ok){
               if(myNo > 1) console.warn('第 ' + myNo + ' 趟先回來，採用它的結果');
-              done(r);
+              done(r, myNo, Date.now() - myStart);
             } else {
               lastFail = r;
               // 全部都跑完而且都失敗了，才算真的失敗
-              if(finished >= maxTries) done(lastFail);
+              if(finished >= maxTries) done(lastFail, 0, 0);
               else if(typeof opts.onRetry === 'function'){ try{ opts.onRetry(launched); }catch(e){} }
             }
           });
@@ -851,7 +858,7 @@
       }
 
       timers.push(setTimeout(function(){
-        done(lastFail || { ok:false, reason:'timeout', error:'hedge-deadline' });
+        done(lastFail || { ok:false, reason:'timeout', error:'hedge-deadline' }, 0, 0);
       }, deadline));
 
       launch();
@@ -2103,7 +2110,8 @@
       // 統計數字不再常駐在工具列上（版面太吵），改成存下來，
       // 按「🔧 診斷」時才連同診斷結果一起顯示。
       lastReadInfo = { stats: body.stats, serverMs: body.serverMs, at: new Date(),
-                       clientMs: Date.now() - tStart, attempts: r.attempts || tryNo };
+                       clientMs: Date.now() - tStart, attempts: r.attempts || tryNo,
+                       winner: r.winner, winnerMs: r.winnerMs };
     } else if(!r.ok){
       const reasonTxt = (r.reason === 'timeout')
         // 走到這裡代表「等了 90 秒、而且自動重試過一次」都還沒回來。
@@ -2193,7 +2201,61 @@
             : '\n→ 這代表問題在部署或連線，不在試算表。請檢查：是否已「部署新版本」、存取權限是否為「任何人」。');
     } else {
       const head = readStatsText();
+
+      // 被寫壞的組別要放在最前面、用人看得懂的方式列出來。
+      // 埋在下面那坨 JSON 裡等於沒講 —— 這是需要人去試算表動手修的事。
+      const sus = (r.body && r.body.suspectOverwrites) || [];
+      let susText = '';
+      if(sus.length){
+        susText = (isEn()
+          ? ('!! ' + sus.length + ' group(s) may have had the main registrant overwritten by a guest:\n')
+          : ('⚠️ 有 ' + sus.length + ' 組的「本人」疑似被攜伴的資料蓋掉：\n'))
+          + sus.map(function(x){
+              return '   ' + x.regId + '　試算表第 ' + x.primaryRow + ' 列（本人）'
+                + '　現在是「' + x.nowName + ' / ' + x.nowIg + '」'
+                + '，與第 ' + x.guestRow + ' 列（攜伴）完全相同'
+                + (x.email ? '\n        本人 Email：' + x.email + '（可用來查出原本是誰）' : '');
+            }).join('\n')
+          + (isEn()
+              ? '\n   Fix by hand in the spreadsheet; check 異動紀錄 for the original values.'
+              : '\n   請到試算表手動改回本人的姓名與 IG；原本的值可以從「異動紀錄」分頁查。')
+          + '\n\n' + '─'.repeat(40) + '\n\n';
+      }
+
+      // 一組被拆成兩組：總人數還是對的、也沒有重複編號，
+      // 所以其他檢查全都看不出來 —— 但每組的人數與金額都算錯了。
+      const split = (r.body && r.body.splitGroups) || [];
+      let splitText = '';
+      if(split.length){
+        splitText = (isEn()
+          ? ('!! ' + split.length + ' registration(s) appear to be split across two IDs:\n')
+          : ('⚠️ 有 ' + split.length + ' 組疑似被拆成兩個報名編號（同一支電話出現在不同編號底下）：\n'))
+          + split.map(function(x){
+              return '   ' + (isEn() ? 'phone ' : '電話 ') + x.phone + '：'
+                + x.detail.map(function(d){
+                    return d.regId + '（第 ' + d.rows.join('、') + ' 列）';
+                  }).join('　+　');
+            }).join('\n')
+          + (isEn()
+              ? '\n   Fix: make every row of the group share ONE registration ID.'
+              : '\n   修法：把這幾列的「報名編號」統一改成同一個，整組才會併回去。')
+          + '\n\n' + '─'.repeat(40) + '\n\n';
+      }
+
+      const noPri = (r.body && r.body.groupsWithoutPrimary) || [];
+      let noPriText = '';
+      if(noPri.length){
+        noPriText = (isEn()
+          ? ('!! ' + noPri.length + ' group(s) have no 本人 row:\n')
+          : ('⚠️ 有 ' + noPri.length + ' 組沒有「本人」那一列：\n'))
+          + noPri.map(function(x){
+              return '   ' + x.regId + '（第 ' + x.rows.join('、') + ' 列：' + x.names.join('、') + '）';
+            }).join('\n')
+          + '\n\n' + '─'.repeat(40) + '\n\n';
+      }
+
       box.textContent = (head ? head + '\n\n' + '─'.repeat(40) + '\n\n' : '')
+        + susText + splitText + noPriText
         + JSON.stringify(r.body, null, 2);
     }
     btn.disabled = false;
@@ -2275,7 +2337,13 @@
           ? ((isEn() ? '   total ' : '　前端總計 ') + (lastReadInfo.clientMs / 1000).toFixed(1)
              + (isEn() ? 's' : ' 秒')
              + '（' + (isEn() ? 'attempts ' : '嘗試 ') + lastReadInfo.attempts
-             + (isEn() ? '' : ' 次') + '）'
+             + (isEn() ? '' : ' 次')
+             + (lastReadInfo.winner
+                 ? ('，' + (isEn() ? 'winner #' : '第 ') + lastReadInfo.winner
+                    + (isEn() ? '' : ' 趟勝出') + ' '
+                    + (lastReadInfo.winnerMs / 1000).toFixed(1) + (isEn() ? 's' : ' 秒'))
+                 : '')
+             + '）'
              + ((lastReadInfo.serverMs != null)
                  ? ('　' + (isEn() ? 'network ' : '傳輸／轉址 ')
                     + ((lastReadInfo.clientMs - lastReadInfo.serverMs) / 1000).toFixed(1)
@@ -2741,7 +2809,17 @@
     } else if(act === 'save-edit'){
       const editor = card.querySelector('.adm-editor');
       const fields = {};
-      editor.querySelectorAll(':scope > div > [data-edit], :scope > .adm-edit-grid > div > [data-edit]')
+      // ⚠️ 這裡的 :not([data-member]) 非常重要，少了它會寫壞資料。
+      //
+      // 編輯區裡「主揪欄位」和「每一位成員」都是 .adm-edit-grid，
+      // 而且都是 .adm-editor 的直接子層。少了這個排除條件，
+      // 成員列的 name / country / ig 也會被當成主揪欄位收進來，
+      // 而且因為是依文件順序覆寫，最後一位成員的值會蓋掉主揪的值 ——
+      // 結果就是「什麼都沒改、按一下儲存，主揪的姓名就變成最後一位攜伴的姓名」。
+      //
+      // 實際發生過：主揪 Ollie歐里 被改成攜伴 Victor小良，IG 與國籍也一起被蓋。
+      editor.querySelectorAll(
+        ':scope > div > [data-edit], :scope > .adm-edit-grid:not([data-member]) > div > [data-edit]')
         .forEach(el=>{ fields[el.dataset.edit] = el.value.trim(); });
       const members = Array.from(editor.querySelectorAll('[data-member]')).map(row=>{
         const o = { index: row.dataset.member };
