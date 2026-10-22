@@ -619,7 +619,7 @@
   const PROMO_IMAGES = {
     1: { zh:'1-TW.jpg', en:'1-EN.jpg', ja:'1-EN.jpg', ko:'1-EN.jpg' },   // 贈獎活動：中文以外都用英文版
     2: { zh:'2-TW.jpg', en:'2-EN.jpg', ja:'2-JN.jpg', ko:'2-KR.jpg' },   // 贊助商-贈獎活動｜現場販售（彈窗暫時關閉，現場活動分頁仍使用）
-    '2b': { zh:'2-TW2.jpg', en:'2-TW2.jpg', ja:'2-TW2.jpg', ko:'2-TW2.jpg' } // 第二個活動的新圖：彈窗第二張＋現場活動第二個的上方，各語言共用
+    '2b': { zh:'2-TW3.jpg', en:'2-TW3.jpg', ja:'2-TW3.jpg', ko:'2-TW3.jpg' } // 第二個活動的新圖：彈窗第二張＋現場活動第二個的上方，各語言共用
   };
 
   function promoSrc(n, lang){
