@@ -20,7 +20,7 @@
 <meta name="twitter:image" content="https://cdn-general.cybassets.com/s/files/35135/theme/127586/assets/dinner10.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 
@@ -133,7 +133,7 @@
       <li data-i18n="notice_2">現場僅提供無酒精飲品，酒水可自行攜帶</li>
       <li data-i18n="notice_3">如活動當日臨時無法出席，請自行尋找替代人員頂替名額，恕不接受退款</li>
       <li data-i18n="notice_4">攜伴出席者須與同行者一同完成報名與付款，並安排於同一桌</li>
-      <li data-i18n="notice_6">同行的攜伴會自動安排在同一桌，無需另外填寫；若想和其他組報名的朋友併桌，請在「與其他組併桌」填寫對方姓名與 IG，資訊不明確者恕無法安排</li>
+      <li data-i18n="notice_6">同行的攜伴會自動安排在同一桌，無需另外填寫；因先前報名的各桌皆已額滿，目前恕無法再安排與其他組併桌</li>
       <li data-i18n="notice_7">請盡可能於活動開始前入場，以免現場混亂</li>
       <li data-i18n="notice_8">請尊重現場工作人員與其他賓客，主辦單位保有請不當行為者離場之權利</li>
       <li data-i18n="notice_9">活動當天可能安排拍照攝影，若不希望入鏡請於報到時告知工作人員</li>
@@ -233,12 +233,18 @@
         <textarea id="su-notes" rows="2"></textarea>
       </div>
 
-      <div class="field">
+      <!-- 併桌欄位暫時關閉：外層加 is-closed 讓整排欄位變灰、不能點；
+           日後要重新開放，把 app.js 的 TABLEWITH_CLOSED 改成 false，並拿掉這裡的 is-closed 與下方提示框即可 -->
+      <div class="field tablewith-field is-closed">
         <label data-i18n="field_tablewith">與其他組併桌（選填）</label>
+        <div class="tablewith-closed" role="note">
+          <b data-i18n="tablewith_closed_title">🪑 併桌安排已截止</b>
+          <span data-i18n="tablewith_closed_body">由於先前報名的各桌皆已額滿，目前無法再安排與其他組併桌，敬請見諒。報名仍持續開放中！雖然可能無法與朋友同桌，但當晚活動時間充裕，現場也安排了多項互動活動，有很多機會彼此交流、一同同樂，誠摯歡迎大家踴躍參加。如有任何問題，歡迎聯繫主辦單位。</span>
+        </div>
         <div class="field-row three-col">
-          <input type="text" id="su-tablewith-name" data-i18n-ph="field_tablewith_name_ph" placeholder="姓名">
+          <input type="text" id="su-tablewith-name" data-i18n-ph="field_tablewith_name_ph" placeholder="姓名" disabled>
           <div class="ig-wrap">
-            <input type="text" id="su-tablewith-ig" autocomplete="off"
+            <input type="text" id="su-tablewith-ig" autocomplete="off" disabled
                    role="combobox" aria-expanded="false" aria-autocomplete="list"
                    aria-controls="ig-suggest"
                    data-i18n-ph="field_tablewith_ig_ph" placeholder="IG">
@@ -247,7 +253,6 @@
           <div class="cpick" id="su-tablewith-country-picker"></div>
           <input type="hidden" id="su-tablewith-country">
         </div>
-        <div class="hint" data-i18n="field_tablewith_hint">你和你的攜伴本來就會安排在同一桌，不用填在這裡。這欄是給「想和其他組報名的朋友併桌」時用的，請填對方的姓名與 IG 以免同名認錯；資訊不清將無法安排</div>
       </div>
 
       <div class="field">
@@ -266,7 +271,7 @@
           <li data-i18n="notice_2">現場僅提供無酒精飲品，酒水可自行攜帶</li>
           <li data-i18n="notice_3">如活動當日臨時無法出席，請自行尋找替代人員頂替名額，恕不接受退款</li>
           <li data-i18n="notice_4">攜伴出席者須與同行者一同完成報名與付款，並安排於同一桌</li>
-          <li data-i18n="notice_6">同行的攜伴會自動安排在同一桌，無需另外填寫；若想和其他組報名的朋友併桌，請在「與其他組併桌」填寫對方姓名與 IG，資訊不明確者恕無法安排</li>
+          <li data-i18n="notice_6">同行的攜伴會自動安排在同一桌，無需另外填寫；因先前報名的各桌皆已額滿，目前恕無法再安排與其他組併桌</li>
           <li data-i18n="notice_7">請盡可能於活動開始前入場，以免現場混亂</li>
           <li data-i18n="notice_8">請尊重現場工作人員與其他賓客，主辦單位保有請不當行為者離場之權利</li>
           <li data-i18n="notice_9">活動當天可能安排拍照攝影，若不希望入鏡請於報到時告知工作人員</li>
@@ -551,7 +556,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 
 </body>
 </html>

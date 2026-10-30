@@ -25,7 +25,9 @@
     notice_2:{en:'Only non-alcoholic drinks will be provided on-site; you\'re welcome to bring your own alcohol', ja:'会場ではノンアルコール飲料のみご用意しております。お酒はお持ち込みいただけます', ko:'현장에서는 무알코올 음료만 제공됩니다. 주류는 각자 가져오실 수 있습니다'},
     notice_3:{en:'If you can\'t make it on the day, please find your own replacement — no refunds', ja:'当日やむを得ずご欠席の場合は、代わりの方をご自身でお探しください。返金はいたしかねます', ko:'당일 부득이하게 참석하지 못하실 경우 대체 참가자를 직접 구해 주세요. 환불은 불가합니다'},
     notice_4:{en:'Guests bringing a plus-one must register and pay together, and will be seated at the same table', ja:'同伴者がいる場合は、お申込みとお支払いをまとめて行っていただき、同じテーブルにご案内します', ko:'동반자와 함께 한 번에 신청 및 결제를 완료해 주세요. 같은 테이블로 안내해 드립니다'},
-    notice_6:{en:'Your own guests are automatically seated with you — no need to list them. Use "Join another group\'s table" only if you want to sit with friends who registered separately, and give their name and IG; unclear details may not be accommodated', ja:'ご同行の方は自動的に同じテーブルになりますので、記入不要です。別々にお申し込みされたお友達と相席をご希望の場合のみ「他のグループとの相席」にお相手のお名前と Instagram アカウントをご記入ください。情報が不明確な場合はご希望に添えないことがあります', ko:'동행하시는 분은 자동으로 같은 테이블에 배정되므로 따로 적지 않으셔도 됩니다. 따로 신청한 친구와 합석을 원하시는 경우에만 "다른 그룹과 합석"에 상대방의 이름과 Instagram 계정을 적어 주세요. 정보가 불명확할 경우 반영이 어려울 수 있습니다'},
+    notice_6:{en:'Your own guests are automatically seated with you — no need to list them. As all previously arranged tables are now full, we are unable to accommodate requests to join another group\'s table', ja:'ご同行の方は自動的に同じテーブルになりますので、記入不要です。なお、既存のテーブルはすべて満席となったため、他のグループとの相席は現在お受けできません', ko:'동행하시는 분은 자동으로 같은 테이블에 배정되므로 따로 적지 않으셔도 됩니다. 기존 테이블이 모두 마감되어 현재 다른 그룹과의 합석은 어렵습니다'},
+    tablewith_closed_title:{en:'🪑 Table-sharing requests are now closed', ja:'🪑 相席のご希望受付は終了しました', ko:'🪑 합석 신청이 마감되었습니다'},
+    tablewith_closed_body:{en:'All previously arranged tables are now full, so we are no longer able to seat new registrants with other groups — we appreciate your understanding. Registration remains open! Even if you can\'t sit with your friends, the evening runs long and there will be plenty of interactive activities, with lots of chances to mingle and have fun together. We\'d love to see you there. If you have any questions, please feel free to contact the organizer.', ja:'これまでにお申し込みいただいたテーブルがすべて満席となったため、他のグループとの相席は現在お受けしておりません。ご了承ください。お申込みは引き続き受付中です！お友達と同じテーブルにならない場合でも、当日は時間もたっぷりあり、会場では交流イベントも多数ご用意しています。皆さまのご参加を心よりお待ちしております。ご不明な点は主催者までお気軽にお問い合わせください。', ko:'기존에 신청된 테이블이 모두 마감되어 현재 다른 그룹과의 합석은 어렵습니다. 양해 부탁드립니다. 신청은 계속 받고 있습니다! 친구와 같은 테이블에 앉지 못하더라도, 당일 행사 시간이 넉넉하고 현장에 다양한 교류 이벤트가 준비되어 있어 함께 어울릴 기회가 많습니다. 많은 참여 부탁드립니다. 문의 사항은 언제든지 주최 측에 연락해 주세요.'},
     notice_7:{en:'Please arrive before the event starts to help keep check-in smooth', ja:'会場の混雑を避けるため、開始時刻までにご入場ください', ko:'현장 혼잡을 피하기 위해 시작 시각 전까지 입장해 주세요'},
     notice_8:{en:'Please treat staff and other guests with respect — the organizer reserves the right to remove anyone behaving inappropriately', ja:'スタッフや他のお客様への配慮をお願いします。不適切な行為があった場合、主催者はご退場をお願いすることがあります', ko:'스태프와 다른 참가자를 존중해 주세요. 부적절한 행위가 있을 경우 주최 측이 퇴장을 요청할 수 있습니다'},
     notice_9:{en:'Photography may take place during the event — let staff know at check-in if you\'d prefer not to be photographed', ja:'当日は写真・動画の撮影を行う場合があります。写り込みを避けたい方は受付時にスタッフへお申し出ください', ko:'당일 사진 및 영상 촬영이 있을 수 있습니다. 사진이나 영상에 나오기를 원하지 않으시면 접수 시 스태프에게 말씀해 주세요'},
@@ -114,6 +116,22 @@
   // 缺某個語言時會自動退回英文，再退回中文（見 pickText），不會開天窗。
   const ANNOUNCEMENTS = [
     {
+      id: 'tablewith-closed',
+      icon: '🪑',
+      title: {
+        zh:'併桌安排已截止',
+        en:'Table-Sharing Requests Closed',
+        ja:'相席のご希望受付終了のお知らせ',
+        ko:'합석 신청 마감 안내'
+      },
+      body: {
+        zh:'由於先前報名的各桌皆已額滿，目前無法再安排與其他組併桌，敬請見諒。報名仍持續開放中！雖然可能無法與朋友同桌，但當晚活動時間充裕，現場也安排了多項互動活動，有很多機會彼此交流、一同同樂，誠摯歡迎大家踴躍參加。如有任何問題，歡迎聯繫主辦單位。',
+        en:'All previously arranged tables are now full, so we are no longer able to seat new registrants with other groups — we appreciate your understanding. Registration remains open! Even if you can\'t sit with your friends, the evening runs long and there will be plenty of interactive activities, with lots of chances to mingle and have fun together. We\'d love to see you there. If you have any questions, please feel free to contact the organizer.',
+        ja:'これまでにお申し込みいただいたテーブルがすべて満席となったため、他のグループとの相席は現在お受けしておりません。ご了承ください。お申込みは引き続き受付中です！お友達と同じテーブルにならない場合でも、当日は時間もたっぷりあり、会場では交流イベントも多数ご用意しています。皆さまのご参加を心よりお待ちしております。ご不明な点は主催者までお気軽にお問い合わせください。',
+        ko:'기존에 신청된 테이블이 모두 마감되어 현재 다른 그룹과의 합석은 어렵습니다. 양해 부탁드립니다. 신청은 계속 받고 있습니다! 친구와 같은 테이블에 앉지 못하더라도, 당일 행사 시간이 넉넉하고 현장에 다양한 교류 이벤트가 준비되어 있어 함께 어울릴 기회가 많습니다. 많은 참여 부탁드립니다. 문의 사항은 언제든지 주최 측에 연락해 주세요.'
+      }
+    },
+    {
       id: 'pay',
       icon: '💳',
       title: {
@@ -164,12 +182,12 @@
           }
         },
         {
-          label:{ zh:'同桌或附近安排', en:'Seating Preference', ja:'同席・近隣席のご希望', ko:'합석 및 인근 배치' },
+          label:{ zh:'同桌安排', en:'Seating Preference', ja:'同席について', ko:'좌석 배정' },
           text:{
-            zh:'填寫報名表時可註明希望同桌的朋友名單。若同行人數超過 10 人（例如 16 人），一樣可以在同一張表單上填寫，主辦方會協助安排坐在相鄰或附近的桌次；若無特別指定，將由主辦方統一協助排位。',
-            en:'You can specify who you would like to sit with on the entry form. If your group exceeds 10 people (e.g., 16 people), you can still list everyone on the same form, and the host will arrange for your tables to be next to or near each other. If no preferences are specified, seats will be assigned by the host.',
-            ja:'お申込みフォームにご一緒したい方のお名前をご記入いただけます。ご同行が 10 名を超える場合（例：16 名）も、同じフォームにまとめてご記入ください。主催側で隣接または近くのテーブルになるよう手配いたします。特にご指定がない場合は、主催側で調整させていただきます。',
-            ko:'신청서에 함께 앉고 싶은 분의 명단을 적어 주실 수 있습니다. 동행 인원이 10명을 넘는 경우(예: 16명)에도 같은 신청서에 모두 적어 주시면, 주최 측에서 인접하거나 가까운 테이블로 배치해 드립니다. 별도의 요청이 없으시면 주최 측에서 배정합니다.'
+            zh:'同一份報名表內的攜伴會安排在同一桌（超過 10 人則安排於相鄰桌次）；與其他組併桌目前已截止，其餘座位由主辦方統一安排。',
+            en:'Guests registered on the same form are seated together (groups over 10 are placed at neighboring tables). Requests to join other groups are now closed; all other seating is assigned by the host.',
+            ja:'同じフォームでお申し込みの方は同じテーブルにご案内します（10 名を超える場合は隣接テーブル）。他グループとの相席受付は終了しており、その他のお座席は主催側で調整いたします。',
+            ko:'같은 신청서로 신청하신 분들은 같은 테이블에 배정됩니다(10명 초과 시 인접 테이블). 다른 그룹과의 합석 신청은 마감되었으며, 그 외 좌석은 주최 측에서 배정합니다.'
           }
         }
       ]
@@ -369,7 +387,7 @@
       // 請求次數沒有增加（一樣是每位有意報名的訪客一次），只是時間點提前；
       // 而且有 localStorage 快取，多數情況根本不會真的送出請求。
       // loadIgDirectory 內部會擋重複呼叫，切來切去也只會載一次。
-      loadIgDirectory();
+      if(!TABLEWITH_CLOSED) loadIgDirectory();
     }
   }
   tabButtons.forEach(btn=>{
@@ -391,6 +409,10 @@
   });
 
   var editingGroup = null;
+
+  // 併桌欄位是否關閉。true = 整排欄位鎖住、不載入 IG 建議清單。
+  // 日後要重新開放：改成 false，並把 index.html 的 is-closed 與提示框拿掉。
+  const TABLEWITH_CLOSED = true;
 
   const guestRowsContainer = document.getElementById('guest-rows');
   const addGuestBtn = document.getElementById('add-guest-btn');
@@ -1548,6 +1570,15 @@
                            ja:'国籍（任意）', ko:'국적 (선택)' }); }
   );
   countryPickers.push(tableWithCountryPicker);
+
+  if(TABLEWITH_CLOSED){
+    const twMount = document.getElementById('su-tablewith-country-picker');
+    const twSearch = twMount.querySelector('.cpick-search');
+    if(twSearch){ twSearch.disabled = true; twSearch.tabIndex = -1; }
+    // 擋掉 mousedown（選單是用 mousedown 打開的），點了不會有任何反應
+    twMount.addEventListener('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); }, true);
+    twMount.setAttribute('aria-disabled', 'true');
+  }
 
   function refreshCountryPickers(){
     countryPickers.forEach(function(p){ p.refresh(); });
